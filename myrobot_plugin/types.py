@@ -4,7 +4,7 @@
 # A type that will be used as an action should have a "converter" function defined here
 # This converter function will be used to convert the standard python type or any other supported type into a ROS message for publishing
 import numpy as np
-from ros_sugar.supported_types import create_supported_type
+from ros_sugar.robot_plugin import create_supported_type
 # These can be the manufacturer's custom message types
 from myrobot_plugin_interface.msg import CustomOdom
 from myrobot_plugin_interface.msg import CustomTwist
