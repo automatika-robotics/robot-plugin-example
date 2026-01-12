@@ -1,6 +1,6 @@
 # Example Robot Plugin
 
-This package serves as an example of how to create a robot plugin compatible with the EmbodiedOS (EMOS)[https://automatikarobotics.com/emos/] or any (Sugarcoat)[https://automatika-robotics.github.io/sugarcoat/] based system.
+This package serves as an example of how to create a robot plugin compatible with the EmbodiedOS [EMOS](https://automatikarobotics.com/emos/) or any [Sugarcoat](https://automatika-robotics.github.io/sugarcoat/) based system.
 
 It demonstrates how to define custom ROS2 interfaces (messages and services), map them to supported internal types, and expose them through a Python plugin structure.
 
