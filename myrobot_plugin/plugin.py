@@ -35,6 +35,7 @@ from ros_sugar.robot import (
     RosServiceTransport,
     RosTopicTransport,
     UdpTransport,
+    plugin_action,
 )
 from ros_sugar.supported_types import Float32
 
@@ -183,6 +184,7 @@ class MyRobotPlugin(RobotPlugin):
         self.transports["commands"].send(codecs.encode_heartbeat())
 
     # -- action / event factories -------------------------------------------
+    @plugin_action(description="Command the robot to a full stop (zero velocity, UDP).")
     def _make_stop_action(self) -> Action:
         """Build an Action that commands the robot to a full stop (UDP)."""
         commands = self.transports["commands"]
@@ -190,6 +192,7 @@ class MyRobotPlugin(RobotPlugin):
             method=lambda: commands.send(codecs.encode_command(0.0, 0.0, 0.0))
         )
 
+    @plugin_action(description="Trigger the robot's docking routine (ROS service).")
     def _make_dock_action(self) -> Action:
         """Build an Action that triggers the robot's docking routine (ROS service)."""
         dock = self.transports["dock"]
