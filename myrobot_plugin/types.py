@@ -1,46 +1,24 @@
-# This module defines custom supported types for all robot feedback (subscribed topics) and all robot actions through published topics
-# A types that will be used as a feedback should have a "callback" function defined here
-# This callback function will be used to convert the incoming ROS message into a standard python type or any other supported type
-# A type that will be used as an action should have a "converter" function defined here
-# This converter function will be used to convert the standard python type or any other supported type into a ROS message for publishing
+"""SupportedType wrappers for the robot's custom ROS messages.
+
+A manufacturer's custom feedback message is wrapped with
+:func:`ros_sugar.robot.create_supported_type` and a ``callback`` that converts
+the ROS message into a plain Python value the recipe can use. The component that
+declares an ``Odometry`` input ends up reading the value this callback returns.
+"""
+
 import numpy as np
-from ros_sugar.robot_plugin import create_supported_type
-# These can be the manufacturer's custom message types
+
+from ros_sugar.robot import create_supported_type
+
+# This would normally be the manufacturer's own ROS interface package.
 from myrobot_plugin_interface.msg import CustomOdom
-from myrobot_plugin_interface.msg import CustomTwist
 
 
-# EXAMPLE 1: Defining a supported type for feedback (subscription)
-# Define Odom callback (for subscription)
-def _odom_callback(msg: CustomOdom, **_) -> np.ndarray:
-    if not msg:
-        return
-    return np.array(
-        [
-            msg.x,
-            msg.y,
-            msg.yaw,
-        ]
-    )  # x, y, yaw
+def _odom_callback(msg: CustomOdom) -> np.ndarray:
+    """Convert the robot's custom odometry message into ``[x, y, yaw]``."""
+    return np.array([msg.x, msg.y, msg.yaw])
 
 
-# After defining the callback, we create the supported type by using the create_supported_type function from ros_sugar
+# Registered SupportedType wrapping CustomOdom. The plugin's Feedback decoder
+# produces CustomOdom instances; this type's callback turns them into arrays.
 RobotOdometry = create_supported_type(CustomOdom, callback=_odom_callback)
-
-
-# EXAMPLE 2: Defining a supported type for action (publishing)
-# Define Twist converter (for publishing)
-def _ctr_converter(
-    vx: float, vy: float, omega: float, **_
-) -> CustomTwist:
-    msg = CustomTwist()
-    msg.vx = vx
-    msg.vy = vy
-    msg.vyaw = omega
-    return msg
-
-
-RobotTwist = create_supported_type(
-    CustomTwist,
-    converter=_ctr_converter,
-)

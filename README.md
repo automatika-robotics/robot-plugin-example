@@ -1,110 +1,142 @@
 # Example Robot Plugin
 
-This package serves as an example of how to create a robot plugin compatible with the EmbodiedOS [EMOS](https://automatikarobotics.com/emos/) or any [Sugarcoat](https://automatika-robotics.github.io/sugarcoat/) based system.
+This package shows how to write a **robot plugin** for [Sugarcoat](https://automatika-robotics.github.io/sugarcoat/)
+(and the [EMOS](https://automatikarobotics.com/emos/) ecosystem built on it).
 
-It demonstrates how to define custom ROS2 interfaces (messages and services), map them to supported internal types, and expose them through a Python plugin structure.
+A robot plugin adapts a *specific* robot's control surface to Sugarcoat's
+standard component I/O, without changing any component code. Real robots rarely
+expose a single clean interface — they mix ROS topics, ROS services, vendor
+UDP/TCP streams, and SDK callbacks. This example targets exactly that: a
+(made-up) robot whose control surface spans **three transport families** in one
+plugin.
 
-This plugin example bridges standard robot commands (like `Twist`) and feedback (like `Odometry`) to custom hardware interfaces that can be defined by a robot manufacturer
+## The robot's mixed control surface
 
-See the steps to [create your own custom robot plugin based on this package](#4-creating-your-own-robot-plugin).
+| What | Transport | Why |
+|:-----|:----------|:----|
+| Odometry telemetry | **UDP** (`UdpTransport`) | high-rate binary stream from the robot's motion controller |
+| Velocity command   | **UDP** (`UdpTransport`) | low-latency `Twist`, plus a 2 Hz heartbeat |
+| Battery level       | **ROS topic** (`RosTopicTransport`) | the robot's onboard computer already publishes it on a ROS topic |
+| Docking routine     | **ROS service** (`RosServiceTransport`) | a discrete behaviour invoked via `std_srvs/Trigger` |
 
-## Package Structure
+The plugin presents all of this through one uniform `RobotPlugin` interface —
+a component that subscribes to `Odometry` or `Float32`, or publishes a `Twist`,
+is completely unaware which transport is behind it.
 
-```text
-myrobot_plugin_interface/
-├── CMakeLists.txt          # Build configuration
-├── package.xml             # Dependencies and metadata
-├── msg/                    # Custom Message definitions, can be added here or can be imported from the manufacturer ROS2 interface package
-│   ├── CustomOdom.msg
-│   └── CustomTwist.msg
-├── srv/                    # Custom Service definitions, can be added here or can be imported from the manufacturer ROS2 interface package
-│   └── RobotActionCall.srv
-├── myrobot_plugin/         # The Python plugin module
-│   ├── __init__.py         # Plugin entry point
-│   ├── clients.py          # Custom service client wrappers
-│   └── types.py            # Type definitions and converters
-└── server_node.py          # Example mock robot server to test publishing to a robot through a server call
-```
+## The Plugin
 
-## 1. Custom Interfaces
+`MyRobotPlugin` (in `myrobot_plugin/plugin.py`) is a subclass of
+`ros_sugar.robot.RobotPlugin`. Its `__init__` is **declarative** — it constructs
+transports and descriptors but performs no I/O — so the launcher can rebuild it
+inside component subprocesses for multiprocess launch. Host-side setup that
+needs an rclpy node (binding the ROS-service client) happens in the optional
+`on_attached(node, bus)` hook, which `RobotPluginHost` calls once after wiring
+is complete.
 
-The plugin defines three ROS2 interfaces as an example of custom interfaces to communicate with the robot's ROS2 interface exposed by the manufacturer:
+* **Transports** — two `UdpTransport`s (a receive-only telemetry endpoint and a
+  send-only command endpoint with a heartbeat), one `RosTopicTransport` (the
+  battery topic), one `RosServiceTransport` (the dock service).
+* **Feedback** — `Odometry` is decoded from the UDP stream into the robot's
+  `CustomOdom` message; `Float32` battery is consumed straight from the robot's
+  ROS topic via a native subscription (no decoding).
+* **Commands** — a standard `Twist` output is encoded to the UDP wire format.
+* **Actions** — `plugin.actions.stop()` (UDP) and `plugin.actions.dock()`
+  (ROS service).
+* **Events** — `plugin.events.low_battery()`, built from a condition on the
+  battery feedback — and because that feedback is a ROS-topic feedback, the
+  condition wires straight onto the robot's real battery topic.
 
-* **`CustomOdom.msg`**: A feedback message containing position (x, y, z) and orientation (pitch, roll, yaw).
-* **`CustomTwist.msg`**: A command message for 2D velocity (vx, vy) and angular velocity (vyaw).
-* **`RobotActionCall.srv`**: A service definition used to trigger actions on the robot, returning a success boolean.
+## Using the Plugin
 
-## 2. Plugin Implementation
-
-The core logic resides in the `myrobot_plugin` Python module.
-
-### Supported Types (`types.py`)
-
-This module defines how to translate between the custom robot types (`CustomOdom` and `CustomTwist`) and standard python types
-
-* **Feedback (Callbacks):** Functions that convert incoming ROS messages into standard types.
-    * *Example:* `_odom_callback` converts `CustomOdom` into a NumPy array `[x, y, yaw]`.
-* **Actions (Converters):** Functions that convert standard commands (like `vx`, `vy`, `omega`) into custom ROS2 messages.
-    * *Example:* `_ctr_converter` converts velocity inputs into a `CustomTwist` message.
-
-```python
-from ros_sugar.robot_plugin import create_supported_type
-# Example: Creating a supported type for feedback
-RobotOdometry = create_supported_type(CustomOdom, callback=_odom_callback)
-```
-
-### Service Clients (`clients.py`)
-
-For robots that handle actions via ROS services (instead of topics), this module defines custom client wrappers inheriting from RobotPluginServiceClient.
-
-* **CustomTwistClient**: Wraps the RobotActionCall service. It implements the _publish method to populate the service request (vx, vy, vyaw) and send it to the robot.
-
-### Plugin Entry Point (`__init__.py`)
-
-This file exposes the plugin capabilities to the framework using two specific dictionaries:
-
-1. **robot_feedback**: Maps standard feedback names (e.g., "Odometry") to Topic instances using the custom types defined in types.py.
-
-2. **robot_action**: Maps standard action names (e.g., "Twist") to either a Topic or a ServiceClientHandler (like CustomTwistClient).
+`MyRobotPlugin` follows Sugarcoat's standard plugin contract: a **zero-argument
+constructor** with every robot-specific endpoint baked in as a class attribute
+(`ROBOT_IP`, `TELEMETRY_PORT`, `COMMAND_PORT`, `BIND_HOST`, `BATTERY_TOPIC`,
+`DOCK_SERVICE`). The recipe author writes nothing about IPs, ports, or wire
+formats:
 
 ```python
-from . import types, clients
+from ros_sugar.launch import Launcher
+from myrobot_plugin import MyRobotPlugin
 
-# Example configuration
-robot_feedback = {
-    "Odometry": Topic(name="myrobot_odom", msg_type=types.RobotOdometry),
-}
+plugin = MyRobotPlugin()
+launcher = Launcher(robot_plugin=plugin)
+launcher.add_pkg(components=[...], multiprocessing=True)
 
-robot_action = {
-    "Twist": clients.CustomTwistClient
-}
+# A plugin event (battery, over ROS) firing a plugin action (dock, over a ROS service)
+launcher.on(plugin.events.low_battery(20.0), plugin.actions.dock())
+
+launcher.bringup()
 ```
 
-## 3. Testing
+The launcher hosts the plugin, propagates it to every component, and tears it
+down on shutdown. A component that declares an `Odometry` or `Float32` input
+transparently receives the robot's data; a component that publishes a `Twist`
+has its output encoded and sent over UDP. With `multiprocessing=True`,
+Sugarcoat rebuilds the plugin in each component subprocess from a JSON spec
+and fans telemetry out over a localhost socket — no extra configuration.
 
-A `server_node.py` is provided to simulate the robot's ROS2 server. It spins a minimal node that listens to `robot_control_service` requests and logs the received velocity commands, allowing you to test the `CustomTwistClient` functionality.
+### Overriding for a specific unit
 
+For testing on localhost, a non-default subnet, or a per-unit reconfigured
+topic, **subclass** and override the class attributes:
 
-## 4. Creating Your Own Robot Plugin
+```python
+from myrobot_plugin import MyRobotPlugin
 
-To create a new plugin for your own robot hardware, follow these steps using this package as a template:
+class MyRobotOnLAN(MyRobotPlugin):
+    ROBOT_IP = "192.168.1.42"          # robot lives on a different subnet
+    BATTERY_TOPIC = "fleet/battery"    # alternate topic name on this unit
 
-0.  Optional: **Define Custom ROS Interfaces**
-    If your robot's manufacturer-specific messages or services are not available to import from another package, define them in `msg/` and `srv/` folders.
-    * *See:* `msg/CustomTwist.msg` and `srv/RobotActionCall.srv`.
+plugin = MyRobotOnLAN()
+```
 
-1.  **Implement Type Converters (`types.py`)**
-    Create a `types.py` module to handle data translation.
-    * **For Each Feedback:** Define a callback function that transforms the custom ROS2 message into a standard Python type (like a NumPy array) which you can use directly in your system. Register it using `create_supported_type`.
-    * **For Each Action:** Define a converter function that transforms standard Python inputs into the custom ROS2 message.
+## Testing
 
-2.  **Handle Service Clients (`clients.py`)**
-    If your robot actions require calling a ROS2 service, create a class inheriting from `RobotPluginServiceClient` in `clients.py`. Implement the `_publish` method to construct and send the service request.
+`server_node.py` is a mock robot with the same mixed surface — an `rclpy` node
+(battery topic + dock service) that also runs UDP threads (telemetry +
+commands):
 
-3.  **Register the Plugin (`__init__.py`)**
-    Expose your new capabilities in `__init__.py` by defining two dictionaries:
-    * `robot_feedback`: Map standard names to `Topic` objects using your custom types.
-    * `robot_action`: Map standard names to `Topic` objects (for topics) or Client classes (for services).
+```bash
+python3 server_node.py --telemetry-port 9870 --command-port 9871
+```
 
-4.  **Configure the Build**
-    Use the same `CMakeLists.txt` and `package.xml` for your new plugin package. Make sure to add any additional used dependencies.
+Inspect everything the plugin exposes as a JSON tree:
+
+```bash
+python3 -m ros_sugar.robot inspect myrobot_plugin:MyRobotPlugin
+```
+
+Run the test suite (mock robot + plugin, no hardware needed):
+
+```bash
+python3 -m pytest test/plugin_test.py -v
+```
+
+## Creating Your Own Robot Plugin
+
+Use this package as a template:
+
+1. **Custom interfaces (optional)** — if your robot has manufacturer-specific
+   ROS messages, define them under `msg/`/`srv/` or import them from the
+   manufacturer's interface package. A robot that is purely UDP/HTTP/SDK may
+   need none.
+2. **Codecs (`codecs.py`)** — implement the encode/decode for any non-ROS wire
+   protocols your robot uses.
+3. **Types (`types.py`)** — for each custom feedback message, wrap it with
+   `create_supported_type` and a callback that converts it to a Python value.
+4. **Plugin (`plugin.py`)** — subclass `RobotPlugin`; in a declarative,
+   zero-arg `__init__` populate `transports`, `feedbacks`, `commands`,
+   `actions` and `events`. Put robot-specific endpoints (IPs, ports, topic
+   names) on the class as upper-case attributes so callers can override them
+   by subclassing. Pick the transport per interface: `UdpTransport` /
+   `HttpTransport` / `SdkCallbackTransport` for vendor links, `RosTopicTransport`
+   / `RosServiceTransport` for interfaces the robot already exposes over ROS.
+   Override the optional `on_attached(node, bus)` hook only when the plugin
+   needs rclpy-node-dependent setup (e.g. binding a `RosServiceTransport`
+   client to the host node).
+5. **Entry point (`__init__.py`)** — export your `RobotPlugin` subclass.
+6. **Build** — reuse this `CMakeLists.txt` / `package.xml`, adjusting package
+   names and dependencies.
+
+See the [Sugarcoat developer docs](https://automatika-robotics.github.io/sugarcoat/development/custom_robot_plugin.html)
+for the full plugin contract.
