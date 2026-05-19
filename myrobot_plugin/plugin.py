@@ -129,7 +129,7 @@ class MyRobotPlugin(RobotPlugin):
         self.feedbacks = {
             # UDP — decoded from the binary telemetry stream
             "Odometry": Feedback(
-                name="Odometry",
+                key="Odometry",
                 msg_type=RobotOdometry,
                 transport=telemetry,
                 decoder=_decode_odom,
@@ -138,7 +138,7 @@ class MyRobotPlugin(RobotPlugin):
             ),
             # ROS topic — consumed via a native ROS subscription, no decoding
             "Float32": Feedback(
-                name="Float32",
+                key="Float32",
                 msg_type=Float32,
                 transport=battery,
                 rate_hz=2.0,
@@ -148,7 +148,7 @@ class MyRobotPlugin(RobotPlugin):
         self.commands = {
             # UDP — a standard Twist encoded to the robot's wire format
             "Twist": RobotCommand(
-                name="Twist",
+                key="Twist",
                 transport=commands,
                 encoder=_encode_twist,
                 description="Base velocity command, sent over UDP",

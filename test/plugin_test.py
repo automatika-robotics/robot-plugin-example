@@ -142,7 +142,7 @@ def test_plugin_introspection():
     desc = MyRobotPlugin().describe()
     transport_kinds = set(desc["transports"].values())
     assert transport_kinds == {"UdpTransport", "RosTopicTransport", "RosServiceTransport"}
-    feedbacks = {f["name"]: f["transport_kind"] for f in desc["feedbacks"]}
+    feedbacks = {f["key"]: f["transport_kind"] for f in desc["feedbacks"]}
     assert feedbacks == {"Odometry": "UdpTransport", "Float32": "RosTopicTransport"}
     assert {a["name"] for a in desc["actions"]} == {"stop", "dock"}
 
@@ -212,7 +212,7 @@ def test_ros_topic_battery_feedback(mock_robot):
 
     component = BaseComponent(
         component_name="battery_consumer",
-        inputs=[Topic(name="battery_in", msg_type="Float32")],
+        inputs=[Topic(name="battery_in", msg_type="Float32", use_plugin=True)],
     )
     component.rclpy_init_node()
     component._robot_plugin = plugin
