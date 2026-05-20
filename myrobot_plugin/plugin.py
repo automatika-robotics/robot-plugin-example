@@ -98,7 +98,14 @@ class MyRobotPlugin(RobotPlugin):
             name="MyRobot",
             vendor="Acme Robotics",
             version="2.0",
-            description="Example robot with mixed UDP + ROS interfaces",
+            description=(
+                "An Acme Robotics MyRobot: a wheeled, differential-drive "
+                "mobile base for indoor environments. It drives on the "
+                "ground, reports its odometry and battery level, accepts "
+                "velocity commands, and can drive itself onto a charging "
+                "dock. It serves as the reference example for writing "
+                "Sugarcoat robot plugins with mixed UDP and ROS interfaces."
+            ),
         )
 
         # --- UDP: recv-only telemetry stream + send-only command endpoint ---
