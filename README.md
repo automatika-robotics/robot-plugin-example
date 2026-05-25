@@ -138,5 +138,15 @@ Use this package as a template:
 6. **Build** — reuse this `CMakeLists.txt` / `package.xml`, adjusting package
    names and dependencies.
 
+### Kompass-ready robot config (optional)
+
+If the plugin targets [kompass](https://github.com/automatika-robotics/kompass),
+build a `kompass.config.RobotConfig` in `__init__` and assign it to
+`self.robot_config`. Sugarcoat's `Launcher` picks it up at `bringup` and
+broadcasts it to every kompass component on the recipe, so recipes don't need
+to construct a `RobotConfig` themselves. A recipe override via
+`launcher.robot = ...` still wins. `MyRobotPlugin` shows the pattern with a
+graceful `ImportError` fallback so the plugin remains usable without kompass.
+
 See the [Sugarcoat developer docs](https://automatika-robotics.github.io/sugarcoat/development/custom_robot_plugin.html)
 for the full plugin contract.

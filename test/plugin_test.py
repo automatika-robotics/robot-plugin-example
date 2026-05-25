@@ -116,6 +116,10 @@ def test_plugin_construction():
     assert set(plugin.commands) == {"Twist"}
     assert {"stop", "dock"} <= set(plugin.actions.names())
     assert "low_battery" in plugin.events
+    # robot_config is a kompass RobotConfig (kompass is a hard dep -- the
+    # plugin import would have sys.exit'd if it weren't available).
+    assert plugin.robot_config.model_type == "DIFFERENTIAL_DRIVE"
+    assert plugin.robot_config.geometry_type.value == "CYLINDER"
 
 
 def test_plugin_spec_roundtrip():

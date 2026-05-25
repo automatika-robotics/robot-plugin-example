@@ -21,7 +21,25 @@ setup that needs an rclpy node (binding the ROS-service client) happens in
 :meth:`on_attached`, the optional hook ``RobotPluginHost`` calls after wiring.
 """
 
+import numpy as np
 from std_srvs.srv import Trigger
+
+# This plugin provides a kompass ``robot_config`` -- it's meant to run
+# inside a kompass-based recipe, so kompass is a hard requirement. Fail
+# fast with a clear message if it isn't installed. Plugins that don't
+# target kompass can omit this whole block (and ``self.robot_config``).
+try:
+    from kompass.config import RobotConfig
+    from kompass_core.models import AngularCtrlLimits, LinearCtrlLimits
+except ImportError:
+    import sys
+
+    sys.stderr.write(
+        "[myrobot_plugin] 'kompass' (and 'kompass-core') are required "
+        "because this plugin provides a kompass robot_config. See the EMOS "
+        "install guide: https://emos.automatikarobotics.com/getting-started/installation.html\n"
+    )
+    sys.exit(1)
 
 from ros_sugar.core.action import Action
 from ros_sugar.core.event import Event
@@ -93,6 +111,22 @@ class MyRobotPlugin(RobotPlugin):
     #: ROS service that triggers the robot's docking routine.
     DOCK_SERVICE = "myrobot/dock"
 
+    # --- Kompass robot model -------------------------------------------------
+    # Strings so the class attrs don't depend on kompass being importable;
+    # kompass's converters resolve them.
+    ROBOT_DRIVE_TYPE = "DIFFERENTIAL_DRIVE"
+    ROBOT_GEOMETRY_TYPE = "CYLINDER"
+    #: ``[radius, height]`` in metres -- typical compact mobile base.
+    ROBOT_GEOMETRY_PARAMS = (0.2, 0.4)
+    #: Forward velocity limits.
+    ROBOT_VX_MAX = 0.5
+    ROBOT_VX_ACC = 1.0
+    ROBOT_VX_DECEL = 1.5
+    #: Angular velocity limits.
+    ROBOT_OMEGA_MAX = 1.5
+    ROBOT_OMEGA_ACC = 2.0
+    ROBOT_OMEGA_DECEL = 2.0
+
     def __init__(self):
         self.metadata = PluginMetadata(
             name="MyRobot",
@@ -105,6 +139,25 @@ class MyRobotPlugin(RobotPlugin):
                 "velocity commands, and can drive itself onto a charging "
                 "dock. It serves as the reference example for writing "
                 "Sugarcoat robot plugins with mixed UDP and ROS interfaces."
+            ),
+        )
+
+        # kompass-ready robot config -- sugarcoat's Launcher picks this up at
+        # bringup and broadcasts to every kompass component. Recipes can
+        # still override via ``launcher.robot = ...``.
+        self.robot_config = RobotConfig(
+            model_type=self.ROBOT_DRIVE_TYPE,
+            geometry_type=self.ROBOT_GEOMETRY_TYPE,
+            geometry_params=np.array(self.ROBOT_GEOMETRY_PARAMS),
+            ctrl_vx_limits=LinearCtrlLimits(
+                max_vel=self.ROBOT_VX_MAX,
+                max_acc=self.ROBOT_VX_ACC,
+                max_decel=self.ROBOT_VX_DECEL,
+            ),
+            ctrl_omega_limits=AngularCtrlLimits(
+                max_vel=self.ROBOT_OMEGA_MAX,
+                max_acc=self.ROBOT_OMEGA_ACC,
+                max_decel=self.ROBOT_OMEGA_DECEL,
             ),
         )
 
