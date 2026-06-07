@@ -126,6 +126,8 @@ class MyRobotPlugin(RobotPlugin):
     ROBOT_OMEGA_MAX = 1.5
     ROBOT_OMEGA_ACC = 2.0
     ROBOT_OMEGA_DECEL = 2.0
+    #: Max steering angle (rad).
+    ROBOT_OMEGA_MAX_STEER = np.pi
 
     def __init__(self):
         self.metadata = PluginMetadata(
@@ -156,6 +158,7 @@ class MyRobotPlugin(RobotPlugin):
             ),
             ctrl_omega_limits=AngularCtrlLimits(
                 max_vel=self.ROBOT_OMEGA_MAX,
+                max_steer=self.ROBOT_OMEGA_MAX_STEER,
                 max_acc=self.ROBOT_OMEGA_ACC,
                 max_decel=self.ROBOT_OMEGA_DECEL,
             ),
